@@ -274,7 +274,8 @@ void workspaceZeroZAutoTouch() {
 	
 	// Drive down until StallGuard detects stall (contact with workpiece)
 	// SG_RESULT goes to 0 when stall is detected
-	while (!contact_detected) {
+	// Also check top limit switch as a safety backup
+	while (!contact_detected && digitalRead(LIMIT_MACH_Z0) == HIGH) {
 		stepperZ.runSpeed();
 		sg_result = driverZ.SG_RESULT();
 		
