@@ -1,4 +1,5 @@
 #include "motors.h"
+#include "../ui/display.h"
 
 float maxHeight = 0.0f;
 
@@ -232,6 +233,8 @@ void workspaceZeroZAutoTouch() {
 	enableStepperZ();
 	stepperZ.setCurrentPosition(0);
 	
+	drawCenteredText("Finding top limit...", 2);
+	
 	// Find top limit (same as standard method)
 	stepperZ.setSpeed(zeroSpeed_0 * ConvLead);
 	while (digitalRead(LIMIT_MACH_Z0) == HIGH) {
@@ -251,6 +254,8 @@ void workspaceZeroZAutoTouch() {
 	maxHeight = stepperZ.currentPosition()*1.0f / ConvLead;
 	Serial.printf("Top limit found. maxHeight: %.2f mm\n", maxHeight);
 	
+	drawCenteredText("Auto-touching\nworkpiece...", 2);
+	
 	// Now use auto-touch to find workpiece surface
 	// Configure StallGuard for Z axis
 	// TCOOLTHRS must be set for StallGuard to work (0xFFFFF = always on)
@@ -264,6 +269,8 @@ void workspaceZeroZAutoTouch() {
 	
 	uint16_t sg_result = 0;
 	bool contact_detected = false;
+	unsigned long start_time = millis();
+	const unsigned long timeout_ms = 30000;  // 30 second timeout
 	
 	Serial.println("Auto-touch: Lowering Z to find workpiece surface...");
 	
@@ -279,6 +286,14 @@ void workspaceZeroZAutoTouch() {
 			Serial.println("Auto-touch: Contact detected!");
 		}
 		
+		// Check for timeout
+		if (millis() - start_time > timeout_ms) {
+			Serial.println("Auto-touch: Timeout - no contact detected");
+			drawCenteredText("Auto-touch\nTimeout!", 2);
+			delay(2000);
+			break;
+		}
+		
 		// Small delay to allow StallGuard to update
 		delayMicroseconds(100);
 	}
@@ -287,10 +302,21 @@ void workspaceZeroZAutoTouch() {
 	stepperZ.setSpeed(0);
 	stepperZ.runSpeed();
 	
+	// If we hit the bottom limit without detecting contact, warn the user
+	if (digitalRead(LIMIT_MACH_Z0) == LOW && !contact_detected) {
+		Serial.println("WARNING: Bottom limit reached before workpiece contact detected!");
+		drawCenteredText("WARNING:\nBottom limit hit!", 2);
+		delay(2000);
+	}
+	
 	// Set current position as Z=0 (workpiece surface)
 	stepperZ.setCurrentPosition(0);
 	
 	Serial.printf("Auto-touch complete. Workpiece surface set to Z=0. SG_RESULT: %d\n", sg_result);
+	
+	if (contact_detected) {
+		drawCenteredText("Contact found!\nRetracting...", 2);
+	}
 	
 	// Retract to rest height
 	stepperZ.setMaxSpeed(maxSpeedZ/2);
