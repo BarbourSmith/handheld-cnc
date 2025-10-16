@@ -16,6 +16,7 @@ void stopStepperX();
 void stopStepperZ();
 void machineZeroXY();
 void workspaceZeroZ();
+void workspaceZeroZAutoTouch();
 void workspaceZeroXY();
 void plungeZ(float zPos);
 void cartesianToMotor(Position pos);

@@ -1,4 +1,5 @@
 #include "motors.h"
+#include "../ui/display.h"
 
 float maxHeight = 0.0f;
 
@@ -224,6 +225,108 @@ void workspaceZeroZ() {
 
 	stepperZ.setMaxSpeed(maxSpeedZ);
 	stepperZ.setAcceleration(maxAccelZ);
+}
+
+void workspaceZeroZAutoTouch() {
+	// Auto-touch Z zeroing using TMC2209 StallGuard detection
+	// First, we need to find the top limit to establish maxHeight reference
+	enableStepperZ();
+	stepperZ.setCurrentPosition(0);
+	
+	drawCenteredText("Finding top limit...", 2);
+	
+	// Find top limit (same as standard method)
+	stepperZ.setSpeed(zeroSpeed_0 * ConvLead);
+	while (digitalRead(LIMIT_MACH_Z0) == HIGH) {
+		stepperZ.runSpeed();
+	}
+	
+	stepperZ.move(-retract * ConvLead);
+	while (stepperZ.distanceToGo() != 0) {
+		stepperZ.run();
+	}
+	
+	stepperZ.setSpeed(zeroSpeed_1 * ConvLead);
+	while (digitalRead(LIMIT_MACH_Z0) == HIGH) {
+		stepperZ.runSpeed();
+	}
+	
+	maxHeight = stepperZ.currentPosition()*1.0f / ConvLead;
+	Serial.printf("Top limit found. maxHeight: %.2f mm\n", maxHeight);
+	
+	drawCenteredText("Auto-touching\nworkpiece...", 2);
+	
+	// Now use auto-touch to find workpiece surface
+	// Configure StallGuard for Z axis
+	// TCOOLTHRS must be set for StallGuard to work
+	driverZ.TCOOLTHRS(STALLGUARD_ALWAYS_ON);
+	// Set StallGuard threshold (lower = more sensitive, higher = less sensitive)
+	driverZ.SGTHRS(STALLGUARD_THRESHOLD);
+	
+	// Move Z down slowly until StallGuard detects contact with workpiece
+	stepperZ.setSpeed(-zeroSpeed_1 * ConvLead);  // Move down (negative direction)
+	
+	uint16_t sg_result = 0;
+	bool contact_detected = false;
+	unsigned long start_time = millis();
+	
+	Serial.println("Auto-touch: Lowering Z to find workpiece surface...");
+	
+	// Drive down until StallGuard detects stall (contact with workpiece)
+	// SG_RESULT goes to 0 when stall is detected
+	// Also check top limit switch as a safety backup
+	while (!contact_detected && digitalRead(LIMIT_MACH_Z0) == HIGH) {
+		stepperZ.runSpeed();
+		sg_result = driverZ.SG_RESULT();
+		
+		// StallGuard result of 0 indicates stall/contact
+		if (sg_result == 0) {
+			contact_detected = true;
+			Serial.println("Auto-touch: Contact detected!");
+		}
+		
+		// Check for timeout
+		if (millis() - start_time > AUTOTOUCH_TIMEOUT_MS) {
+			Serial.println("Auto-touch: Timeout - no contact detected");
+			drawCenteredText("Auto-touch\nTimeout!", 2);
+			delay(2000);
+			break;
+		}
+		
+		// Small delay to allow StallGuard to update
+		delayMicroseconds(STALLGUARD_UPDATE_DELAY_US);
+	}
+	
+	// Stop the motor immediately
+	stepperZ.setSpeed(0);
+	stepperZ.runSpeed();
+	
+	// Only set Z=0 if contact was actually detected
+	if (contact_detected) {
+		// Set current position as Z=0 (workpiece surface)
+		stepperZ.setCurrentPosition(0);
+		Serial.printf("Auto-touch complete. Workpiece surface set to Z=0. SG_RESULT: %d\n", sg_result);
+		drawCenteredText("Contact found!\nRetracting...", 2);
+	} else {
+		// Auto-touch failed - maintain current position
+		Serial.println("WARNING: Auto-touch failed - Z position not zeroed");
+		drawCenteredText("WARNING:\nAuto-touch failed!", 2);
+		delay(2000);
+	}
+	
+	// Retract to rest height
+	stepperZ.setMaxSpeed(maxSpeedZ/2);
+	stepperZ.moveTo(restHeight * ConvLead);
+	while (stepperZ.distanceToGo() != 0) {
+		stepperZ.run();
+	}
+	
+	// Reset motor configurations
+	stepperZ.setMaxSpeed(maxSpeedZ);
+	stepperZ.setAcceleration(maxAccelZ);
+	
+	// Disable StallGuard for normal operation
+	driverZ.TCOOLTHRS(0);
 }
 
 void workspaceZeroXY() {
