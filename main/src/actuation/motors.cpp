@@ -228,8 +228,30 @@ void workspaceZeroZ() {
 
 void workspaceZeroZAutoTouch() {
 	// Auto-touch Z zeroing using TMC2209 StallGuard detection
+	// First, we need to find the top limit to establish maxHeight reference
 	enableStepperZ();
+	stepperZ.setCurrentPosition(0);
 	
+	// Find top limit (same as standard method)
+	stepperZ.setSpeed(zeroSpeed_0 * ConvLead);
+	while (digitalRead(LIMIT_MACH_Z0) == HIGH) {
+		stepperZ.runSpeed();
+	}
+	
+	stepperZ.move(-retract * ConvLead);
+	while (stepperZ.distanceToGo() != 0) {
+		stepperZ.run();
+	}
+	
+	stepperZ.setSpeed(zeroSpeed_1 * ConvLead);
+	while (digitalRead(LIMIT_MACH_Z0) == HIGH) {
+		stepperZ.runSpeed();
+	}
+	
+	maxHeight = stepperZ.currentPosition()*1.0f / ConvLead;
+	Serial.printf("Top limit found. maxHeight: %.2f mm\n", maxHeight);
+	
+	// Now use auto-touch to find workpiece surface
 	// Configure StallGuard for Z axis
 	// TCOOLTHRS must be set for StallGuard to work (0xFFFFF = always on)
 	driverZ.TCOOLTHRS(0xFFFFF);
@@ -237,11 +259,13 @@ void workspaceZeroZAutoTouch() {
 	// Typical range: 0-255, we use 10 for sensitive contact detection
 	driverZ.SGTHRS(10);
 	
-	// Move Z down slowly until StallGuard detects contact
+	// Move Z down slowly until StallGuard detects contact with workpiece
 	stepperZ.setSpeed(-zeroSpeed_1 * ConvLead);  // Move down (negative direction)
 	
 	uint16_t sg_result = 0;
 	bool contact_detected = false;
+	
+	Serial.println("Auto-touch: Lowering Z to find workpiece surface...");
 	
 	// Drive down until StallGuard detects stall (contact with workpiece)
 	// SG_RESULT goes to 0 when stall is detected
@@ -265,9 +289,8 @@ void workspaceZeroZAutoTouch() {
 	
 	// Set current position as Z=0 (workpiece surface)
 	stepperZ.setCurrentPosition(0);
-	maxHeight = 0.0f;
 	
-	Serial.printf("Auto-touch complete. SG_RESULT: %d\n", sg_result);
+	Serial.printf("Auto-touch complete. Workpiece surface set to Z=0. SG_RESULT: %d\n", sg_result);
 	
 	// Retract to rest height
 	stepperZ.setMaxSpeed(maxSpeedZ/2);
