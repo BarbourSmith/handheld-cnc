@@ -31,8 +31,20 @@ void onClickZeroMachineXY(EncoderButton &eb) {
 }
 
 void onClickZeroWorkspaceZ(EncoderButton &eb) {
-	drawCenteredText("Zeroing Workspace Z...", 2);
-	workspaceZeroZ();
+	// Check if both handle buttons are pressed for auto-touch
+	bool both_handles_pressed = (digitalRead(BUTT_HANDLE_L) == LOW) && (digitalRead(BUTT_HANDLE_R) == LOW);
+	
+	if (both_handles_pressed) {
+		// Use auto-touch method
+		drawCenteredText("Auto-touch Z...", 2);
+		workspaceZeroZAutoTouch();
+		Serial.println("Auto-touch Z zeroing complete");
+	} else {
+		// Use standard manual method
+		drawCenteredText("Zeroing Workspace Z...", 2);
+		workspaceZeroZ();
+	}
+	
 	state = WORKSPACE_Z_ZERO;
 	encoderSetThickness();
 }
