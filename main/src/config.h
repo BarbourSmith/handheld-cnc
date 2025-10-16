@@ -105,4 +105,10 @@ const long unsigned dtOutputSD = 10;			// time interval for auxiliary SD logging
 const long unsigned dt = 900;					// length of sensor timestep (us)(freq = 1,000,000/timestepPoll [Hz])
 const long unsigned dtControl = 500;			// length of control timestep (us)(freq = 1,000,000/timestepControl [Hz])
 
+// Auto-touch constants
+const uint32_t STALLGUARD_ALWAYS_ON = 0xFFFFF;	// TCOOLTHRS value to enable StallGuard
+const uint8_t STALLGUARD_THRESHOLD = 10;		// StallGuard sensitivity threshold (0-255, lower = more sensitive)
+const unsigned long AUTOTOUCH_TIMEOUT_MS = 30000;	// Auto-touch timeout (ms)
+const unsigned long STALLGUARD_UPDATE_DELAY_US = 100;	// Delay for StallGuard register update (us)
+
 #endif

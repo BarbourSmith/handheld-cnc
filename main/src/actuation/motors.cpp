@@ -258,11 +258,10 @@ void workspaceZeroZAutoTouch() {
 	
 	// Now use auto-touch to find workpiece surface
 	// Configure StallGuard for Z axis
-	// TCOOLTHRS must be set for StallGuard to work (0xFFFFF = always on)
-	driverZ.TCOOLTHRS(0xFFFFF);
+	// TCOOLTHRS must be set for StallGuard to work
+	driverZ.TCOOLTHRS(STALLGUARD_ALWAYS_ON);
 	// Set StallGuard threshold (lower = more sensitive, higher = less sensitive)
-	// Typical range: 0-255, we use 10 for sensitive contact detection
-	driverZ.SGTHRS(10);
+	driverZ.SGTHRS(STALLGUARD_THRESHOLD);
 	
 	// Move Z down slowly until StallGuard detects contact with workpiece
 	stepperZ.setSpeed(-zeroSpeed_1 * ConvLead);  // Move down (negative direction)
@@ -270,13 +269,12 @@ void workspaceZeroZAutoTouch() {
 	uint16_t sg_result = 0;
 	bool contact_detected = false;
 	unsigned long start_time = millis();
-	const unsigned long timeout_ms = 30000;  // 30 second timeout
 	
 	Serial.println("Auto-touch: Lowering Z to find workpiece surface...");
 	
 	// Drive down until StallGuard detects stall (contact with workpiece)
 	// SG_RESULT goes to 0 when stall is detected
-	while (!contact_detected && digitalRead(LIMIT_MACH_Z0) == HIGH) {
+	while (!contact_detected) {
 		stepperZ.runSpeed();
 		sg_result = driverZ.SG_RESULT();
 		
@@ -287,7 +285,7 @@ void workspaceZeroZAutoTouch() {
 		}
 		
 		// Check for timeout
-		if (millis() - start_time > timeout_ms) {
+		if (millis() - start_time > AUTOTOUCH_TIMEOUT_MS) {
 			Serial.println("Auto-touch: Timeout - no contact detected");
 			drawCenteredText("Auto-touch\nTimeout!", 2);
 			delay(2000);
@@ -295,27 +293,24 @@ void workspaceZeroZAutoTouch() {
 		}
 		
 		// Small delay to allow StallGuard to update
-		delayMicroseconds(100);
+		delayMicroseconds(STALLGUARD_UPDATE_DELAY_US);
 	}
 	
 	// Stop the motor immediately
 	stepperZ.setSpeed(0);
 	stepperZ.runSpeed();
 	
-	// If we hit the bottom limit without detecting contact, warn the user
-	if (digitalRead(LIMIT_MACH_Z0) == LOW && !contact_detected) {
-		Serial.println("WARNING: Bottom limit reached before workpiece contact detected!");
-		drawCenteredText("WARNING:\nBottom limit hit!", 2);
-		delay(2000);
-	}
-	
-	// Set current position as Z=0 (workpiece surface)
-	stepperZ.setCurrentPosition(0);
-	
-	Serial.printf("Auto-touch complete. Workpiece surface set to Z=0. SG_RESULT: %d\n", sg_result);
-	
+	// Only set Z=0 if contact was actually detected
 	if (contact_detected) {
+		// Set current position as Z=0 (workpiece surface)
+		stepperZ.setCurrentPosition(0);
+		Serial.printf("Auto-touch complete. Workpiece surface set to Z=0. SG_RESULT: %d\n", sg_result);
 		drawCenteredText("Contact found!\nRetracting...", 2);
+	} else {
+		// Auto-touch failed - maintain current position
+		Serial.println("WARNING: Auto-touch failed - Z position not zeroed");
+		drawCenteredText("WARNING:\nAuto-touch failed!", 2);
+		delay(2000);
 	}
 	
 	// Retract to rest height
